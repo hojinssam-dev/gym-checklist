@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#12201a">
+<title>오션짐 관리자</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="loginView" class="login-wrap">
+  <div class="login-title">오션짐 관리자 로그인</div>
+  <div class="login-sub">시간대별 업무를 등록/수정할 수 있어요</div>
+  <div class="field">
+    <label>아이디</label>
+    <input type="text" id="loginId" autocapitalize="off" autocomplete="off">
+  </div>
+  <div class="field">
+    <label>PIN (4자리)</label>
+    <input type="password" id="loginPin" inputmode="numeric" maxlength="4" autocomplete="off">
+  </div>
+  <button class="btn" id="loginBtn">로그인</button>
+  <div class="error-msg" id="loginError"></div>
+</div>
+
+<div id="editorView" class="shell" style="display:none">
+  <div class="admin-header">
+    <div class="brand" style="font-size:26px">오션짐 업무 관리</div>
+    <div style="display:flex;align-items:center;gap:14px">
+      <button class="logout-btn" id="historyBtn">완료 기록</button>
+      <button class="logout-btn" id="logoutBtn">로그아웃</button>
+    </div>
+  </div>
+
+  <div id="slotList"></div>
+  <button class="add-slot-btn" id="addSlotBtn">+ 시간대 추가</button>
+
+  <div class="save-bar">
+    <button class="btn" id="saveBtn">저장하기</button>
+    <a href="index.html" class="btn ghost" style="display:block;text-align:center;text-decoration:none;box-sizing:border-box;margin-top:8px">직원 화면 미리보기</a>
+    <div class="save-status" id="saveStatus"></div>
+  </div>
+</div>
+
+<div id="historyView" class="shell" style="display:none">
+  <div class="admin-header">
+    <div class="brand" style="font-size:26px">완료 기록</div>
+    <button class="logout-btn" id="closeHistoryBtn">닫기</button>
+  </div>
+  <div id="historyList"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let tasks = [];
+let credentials = null;
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 1800);
+}
+
+function uid() {
+  return Math.random().toString(36).slice(2, 9);
+}
+
+// 이전 시간대의 업무 전체를 복제해서 바로 뒤에 새 시간대로 추가
+// (업무 내용은 그대로 복사되고, 시간만 새로 입력해서 저장하면 됨)
+function duplicateSlot(index) {
+  const original = tasks[index];
+  const clone = {
+    id: uid(),
+    time: original.time,
+    tasks: original.tasks.map(t => ({ id: uid(), text: t.text }))
+  };
+  tasks.splice(index + 1, 0, clone);
+  renderEditor();
+  showToast('복제됐어요. 시간을 바꿔서 저장하세요');
+}
+
+function loadStoredCreds() {
+  const raw = localStorage.getItem('gymAdminCreds');
+  if (raw) {
+    try { return JSON.parse(raw); } catch (e) { return null; }
+  }
+  return null;
+}
+
+async function tryLogin(id, pin) {
+  const res = await fetch('/.netlify/functions/tasks?verifyOnly=1', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, pin, verifyOnly: true })
+  });
+  return res.ok;
+}
+
+document.getElementById('loginBtn').addEventListener('click', async () => {
+  const id = document.getElementById('loginId').value.trim();
+  const pin = document.getElementById('loginPin').value.trim();
+  const errEl = document.getElementById('loginError');
+  errEl.textContent = '';
+  if (!id || pin.length !== 4) {
+    errEl.textContent = '아이디와 4자리 PIN을 입력해주세요';
+    return;
+  }
+  const ok = await tryLogin(id, pin);
+  if (!ok) {
+    errEl.textContent = '아이디 또는 PIN이 올바르지 않습니다';
+    return;
+  }
+  credentials = { id, pin };
+  localStorage.setItem('gymAdminCreds', JSON.stringify(credentials));
+  enterEditor();
+});
+
+document.getElementById('logoutBtn').addEventListener('click', () => {
+  localStorage.removeItem('gymAdminCreds');
+  credentials = null;
+  document.getElementById('editorView').style.display = 'none';
+  document.getElementById('loginView').style.display = 'flex';
+});
+
+async function enterEditor() {
+  document.getElementById('loginView').style.display = 'none';
+  document.getElementById('editorView').style.display = 'block';
+  await loadTasks();
+  renderEditor();
+}
+
+async function loadTasks() {
+  const res = await fetch('/.netlify/functions/tasks');
+  const data = await res.json();
+  tasks = data.tasks || [];
+}
+
+function renderEditor() {
+  const list = document.getElementById('slotList');
+  list.innerHTML = tasks.map((slot, si) => `
+    <div class="admin-slot" data-slot="${si}">
+      <div class="admin-slot-head">
+        <input class="time-input" type="time" value="${slot.time}" data-role="time" data-slot="${si}">
+        <button class="icon-btn" data-role="duplicate-slot" data-slot="${si}">이 시간대 복제</button>
+        <button class="icon-btn remove-slot" data-role="remove-slot" data-slot="${si}">시간대 삭제</button>
+      </div>
+      <div class="admin-tasks" data-slot="${si}">
+        ${slot.tasks.map((t, ti) => `
+          <div class="admin-task-row" data-slot="${si}" data-task="${ti}" data-task-id="${t.id}">
+            <span class="drag-handle" title="드래그해서 순서 변경">⠿</span>
+            <input type="text" value="${escapeAttr(t.text)}" data-role="task-text" data-slot="${si}" data-task="${ti}" placeholder="업무 내용">
+            <button class="icon-btn" data-role="remove-task" data-slot="${si}" data-task="${ti}">✕</button>
+          </div>
+        `).join('')}
+      </div>
+      <button class="add-task-btn" data-role="add-task" data-slot="${si}">+ 업무 추가</button>
+    </div>
+  `).join('');
+
+  list.querySelectorAll('[data-role="time"]').forEach(el => {
+    el.addEventListener('change', () => {
+      tasks[+el.dataset.slot].time = el.value;
+    });
+  });
+  list.querySelectorAll('[data-role="remove-slot"]').forEach(el => {
+    el.addEventListener('click', () => {
+      tasks.splice(+el.dataset.slot, 1);
+      renderEditor();
+    });
+  });
+  list.querySelectorAll('[data-role="duplicate-slot"]').forEach(el => {
+    el.addEventListener('click', () => {
+      duplicateSlot(+el.dataset.slot);
+    });
+  });
+  list.querySelectorAll('[data-role="task-text"]').forEach(el => {
+    el.addEventListener('input', () => {
+      tasks[+el.dataset.slot].tasks[+el.dataset.task].text = el.value;
+    });
+  });
+  list.querySelectorAll('[data-role="remove-task"]').forEach(el => {
+    el.addEventListener('click', () => {
+      tasks[+el.dataset.slot].tasks.splice(+el.dataset.task, 1);
+      renderEditor();
+    });
+  });
+  list.querySelectorAll('[data-role="add-task"]').forEach(el => {
+    el.addEventListener('click', () => {
+      tasks[+el.dataset.slot].tasks.push({ id: uid(), text: '' });
+      renderEditor();
+    });
+  });
+
+  attachDragHandlers();
+}
+
+// ---- 업무 순서 드래그 정렬 ----
+function attachDragHandlers() {
+  document.querySelectorAll('.admin-tasks').forEach(container => {
+    container.querySelectorAll('.drag-handle').forEach(handle => {
+      handle.onpointerdown = (e) => startDrag(e, container);
+    });
+  });
+}
+
+function startDrag(e, container) {
+  e.preventDefault();
+  const row = e.target.closest('.admin-task-row');
+  if (!row) return;
+  const pointerId = e.pointerId;
+  row.setPointerCapture(pointerId);
+  row.classList.add('dragging');
+
+  function onMove(ev) {
+    const y = ev.clientY;
+    const siblings = [...container.querySelectorAll('.admin-task-row')].filter(r => r !== row);
+    for (const sib of siblings) {
+      const rect = sib.getBoundingClientRect();
+      const mid = rect.top + rect.height / 2;
+      const sibIsAfterRow = !!(row.compareDocumentPosition(sib) & Node.DOCUMENT_POSITION_FOLLOWING);
+      if (y < mid && sibIsAfterRow) {
+        container.insertBefore(row, sib);
+        break;
+      }
+      if (y > mid && !sibIsAfterRow) {
+        container.insertBefore(row, sib.nextSibling);
+        break;
+      }
+    }
+  }
+
+  function onUp() {
+    row.classList.remove('dragging');
+    row.removeEventListener('pointermove', onMove);
+    row.removeEventListener('pointerup', onUp);
+    row.releasePointerCapture(pointerId);
+    syncTaskOrderFromDOM(container);
+    renderEditor();
+  }
+
+  row.addEventListener('pointermove', onMove);
+  row.addEventListener('pointerup', onUp);
+}
+
+function syncTaskOrderFromDOM(container) {
+  const slotIndex = +container.dataset.slot;
+  const orderedIds = [...container.querySelectorAll('.admin-task-row')].map(r => r.dataset.taskId);
+  const slot = tasks[slotIndex];
+  slot.tasks = orderedIds.map(id => slot.tasks.find(t => t.id === id));
+}
+
+// ---- 완료 기록 히스토리 ----
+document.getElementById('historyBtn').addEventListener('click', async () => {
+  document.getElementById('editorView').style.display = 'none';
+  document.getElementById('historyView').style.display = 'block';
+  await loadAndRenderHistory();
+});
+
+document.getElementById('closeHistoryBtn').addEventListener('click', () => {
+  document.getElementById('historyView').style.display = 'none';
+  document.getElementById('editorView').style.display = 'block';
+});
+
+function allCurrentTasksFlat() {
+  const flat = [];
+  tasks.forEach(slot => slot.tasks.forEach(t => flat.push({ id: t.id, text: t.text, time: slot.time })));
+  return flat;
+}
+
+async function loadAndRenderHistory() {
+  const listEl = document.getElementById('historyList');
+  listEl.innerHTML = '<div class="save-status">불러오는 중...</div>';
+  let records = {};
+  try {
+    const res = await fetch('/.netlify/functions/history', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: credentials.id, pin: credentials.pin, days: 30 })
+    });
+    if (!res.ok) throw new Error('failed');
+    const data = await res.json();
+    records = data.records || {};
+  } catch (e) {
+    listEl.innerHTML = '<div class="save-status">기록을 불러오지 못했어요</div>';
+    return;
+  }
+
+  const flatTasks = allCurrentTasksFlat();
+  const dates = Object.keys(records).sort().reverse();
+
+  if (!dates.length) {
+    listEl.innerHTML = '<div class="empty-state"><div class="big">기록이 없어요</div><div>직원이 업무를 체크하면 여기 날짜별로 쌓여요</div></div>';
+    return;
+  }
+
+  listEl.innerHTML = dates.map(date => {
+    const checkedMap = records[date] || {};
+    const total = flatTasks.length;
+    const done = flatTasks.filter(t => checkedMap[t.id]).length;
+    const dayLabel = formatHistoryDate(date);
+    return `
+      <div class="admin-slot history-entry" data-date="${date}">
+        <div class="history-head" data-role="toggle-history" data-date="${date}">
+          <div>
+            <div style="font-family:var(--font-display);font-size:19px;color:var(--brass-bright)">${dayLabel}</div>
+          </div>
+          <div style="font-size:13px;color:var(--text-dim)">${done} / ${total}개 완료</div>
+        </div>
+        <div class="history-detail" id="detail-${date}" style="display:none">
+          ${flatTasks.map(t => `
+            <div class="task-row ${checkedMap[t.id] ? 'checked' : ''}" style="cursor:default">
+              <div class="checkbox">${checkedMap[t.id] ? '<svg viewBox="0 0 24 24" fill="none"><path d="M4 12.5L9.5 18L20 6" stroke="#14201a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>' : ''}</div>
+              <div class="task-text" style="font-size:13.5px">${t.time} · ${escapeAttr(t.text)}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  listEl.querySelectorAll('[data-role="toggle-history"]').forEach(el => {
+    el.addEventListener('click', () => {
+      const detail = document.getElementById('detail-' + el.dataset.date);
+      detail.style.display = detail.style.display === 'none' ? 'block' : 'none';
+    });
+  });
+}
+
+function formatHistoryDate(dateStr) {
+  const [y, m, d] = dateStr.split('-');
+  const days = ['일','월','화','수','목','금','토'];
+  const dow = new Date(dateStr + 'T00:00:00Z').getUTCDay();
+  return `${m}.${d} (${days[dow]})`;
+}
+
+function escapeAttr(str) {
+  return String(str).replace(/"/g, '&quot;');
+}
+
+document.getElementById('addSlotBtn').addEventListener('click', () => {
+  tasks.push({ id: uid(), time: '09:00', tasks: [{ id: uid(), text: '' }] });
+  tasks.sort((a, b) => a.time.localeCompare(b.time));
+  renderEditor();
+});
+
+document.getElementById('saveBtn').addEventListener('click', async () => {
+  const statusEl = document.getElementById('saveStatus');
+  const cleaned = tasks
+    .map(s => ({ ...s, tasks: s.tasks.filter(t => t.text.trim() !== '') }))
+    .filter(s => s.tasks.length > 0)
+    .sort((a, b) => a.time.localeCompare(b.time));
+  statusEl.textContent = '저장 중...';
+  try {
+    const res = await fetch('/.netlify/functions/tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: credentials.id, pin: credentials.pin, tasks: cleaned })
+    });
+    if (!res.ok) throw new Error('save failed');
+    tasks = cleaned;
+    renderEditor();
+    statusEl.textContent = '저장됐어요';
+    showToast('저장 완료');
+  } catch (e) {
+    statusEl.textContent = '저장 실패, 다시 시도해주세요';
+  }
+  setTimeout(() => { statusEl.textContent = ''; }, 2500);
+});
+
+// 자동 로그인
+(async function initAuto() {
+  const stored = loadStoredCreds();
+  if (stored) {
+    const ok = await tryLogin(stored.id, stored.pin);
+    if (ok) {
+      credentials = stored;
+      enterEditor();
+      return;
+    }
+    localStorage.removeItem('gymAdminCreds');
+  }
+})();
+</script>
+</body>
+</html>
