@@ -324,11 +324,11 @@ async function loadVersion() {
   try {
     const res = await fetch(`version.json?t=${Date.now()}`);
     const data = await res.json();
-    const match = /^(\d{4})\.(\d{2})\.(\d{2})/.exec(data.version || '');
+    const match = /^(\d{4})\.(\d{2})\.(\d{2})(-\d+)?$/.exec(data.version || '');
     const el = document.getElementById('versionFooter');
     if (match) {
-      const [, y, m, d] = match;
-      el.textContent = `v${y}.${Number(m)}.${Number(d)}`;
+      const [, y, m, d, suffix] = match;
+      el.textContent = `v${y}.${Number(m)}.${Number(d)}${suffix || ''}`;
     } else if (data.version) {
       el.textContent = `v${data.version}`;
     }

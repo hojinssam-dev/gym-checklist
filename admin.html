@@ -217,18 +217,27 @@ function startDrag(e, container) {
   function onMove(ev) {
     const y = ev.clientY;
     const siblings = [...container.querySelectorAll('.admin-task-row')].filter(r => r !== row);
+
+    // 매번 처음부터 다시 계산: 지금 손가락(마우스) 위치가 위에서부터 순서대로
+    // 몇 번째 항목의 중간 지점보다 위에 있는지를 찾아서, 바로 그 자리에 끼워 넣음.
+    // (이전 방식은 "위로 이동"과 "아래로 이동"을 각각 다른 조건으로 나눠서 처리하다
+    //  둘 다 해당 안 되는 빈틈이 생겨 원하는 위치로 안 가는 경우가 있었음)
+    let insertBeforeEl = null;
     for (const sib of siblings) {
       const rect = sib.getBoundingClientRect();
       const mid = rect.top + rect.height / 2;
-      const sibIsAfterRow = !!(row.compareDocumentPosition(sib) & Node.DOCUMENT_POSITION_FOLLOWING);
-      if (y < mid && sibIsAfterRow) {
-        container.insertBefore(row, sib);
+      if (y < mid) {
+        insertBeforeEl = sib;
         break;
       }
-      if (y > mid && !sibIsAfterRow) {
-        container.insertBefore(row, sib.nextSibling);
-        break;
+    }
+
+    if (insertBeforeEl) {
+      if (insertBeforeEl !== row.nextSibling) {
+        container.insertBefore(row, insertBeforeEl);
       }
+    } else if (container.lastElementChild !== row) {
+      container.appendChild(row);
     }
   }
 
