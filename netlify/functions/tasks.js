@@ -32,7 +32,7 @@ export default async (req) => {
   if (req.method === 'GET') {
     const data = await store.get('tasks', { type: 'json' });
     return new Response(JSON.stringify({ tasks: data || SEED_TASKS }), {
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }
     });
   }
 
@@ -52,7 +52,7 @@ export default async (req) => {
 
     if (verifyOnly) {
       return new Response(JSON.stringify({ ok: true }), {
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }
       });
     }
 
@@ -62,7 +62,7 @@ export default async (req) => {
 
     await store.setJSON('tasks', tasks);
     return new Response(JSON.stringify({ ok: true }), {
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }
     });
   }
 

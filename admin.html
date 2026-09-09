@@ -316,6 +316,9 @@ async function loadAndRenderHistory() {
               <div class="task-text" style="font-size:13.5px">${t.time} · ${escapeAttr(t.text)}</div>
             </div>
           `).join('')}
+          <div style="padding:12px 16px;border-top:1px solid var(--line)">
+            <button class="btn danger" style="width:100%" data-role="reset-date" data-date="${date}">이 날짜 체크 전체 초기화</button>
+          </div>
         </div>
       </div>
     `;
@@ -325,6 +328,30 @@ async function loadAndRenderHistory() {
     el.addEventListener('click', () => {
       const detail = document.getElementById('detail-' + el.dataset.date);
       detail.style.display = detail.style.display === 'none' ? 'block' : 'none';
+    });
+  });
+
+  listEl.querySelectorAll('[data-role="reset-date"]').forEach(el => {
+    el.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const date = el.dataset.date;
+      if (!confirm(`${date} 날짜의 체크 기록을 전부 지울까요? 되돌릴 수 없어요.`)) return;
+      el.disabled = true;
+      el.textContent = '초기화하는 중...';
+      try {
+        const res = await fetch('/.netlify/functions/checks', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: credentials.id, pin: credentials.pin, date })
+        });
+        if (!res.ok) throw new Error('reset failed');
+        showToast(`${date} 기록을 초기화했어요`);
+        await loadAndRenderHistory();
+      } catch (err) {
+        showToast('초기화 실패, 다시 시도해주세요');
+        el.disabled = false;
+        el.textContent = '이 날짜 체크 전체 초기화';
+      }
     });
   });
 }

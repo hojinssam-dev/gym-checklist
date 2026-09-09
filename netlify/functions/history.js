@@ -48,6 +48,6 @@ export default async (req) => {
   }
 
   return new Response(JSON.stringify({ records: limitedRecords }), {
-    headers: { 'Content-Type': 'application/json' }
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }
   });
 };

@@ -11,6 +11,13 @@ function keyFor(date, taskId) {
   return `checks:${date}:${encodeURIComponent(taskId)}`;
 }
 
+function verify(id, pin) {
+  const envId = process.env.ADMIN_ID;
+  const envPin = process.env.ADMIN_PIN;
+  if (!envId || !envPin) return false;
+  return id === envId && String(pin) === String(envPin);
+}
+
 export default async (req) => {
   const store = getStore('gym-checklist');
   const url = new URL(req.url);
@@ -28,7 +35,7 @@ export default async (req) => {
       checks[taskId] = true;
     }
     return new Response(JSON.stringify({ checks }), {
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }
     });
   }
 
@@ -54,7 +61,29 @@ export default async (req) => {
       }
     }
     return new Response(JSON.stringify({ ok: true }), {
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }
+    });
+  }
+
+  if (req.method === 'DELETE') {
+    let body;
+    try {
+      body = await req.json();
+    } catch (e) {
+      return new Response(JSON.stringify({ error: 'invalid body' }), { status: 400 });
+    }
+    const { id, pin, date } = body;
+    if (!verify(id, pin)) {
+      return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401 });
+    }
+    if (!isValidDate(date)) {
+      return new Response(JSON.stringify({ error: 'invalid date' }), { status: 400 });
+    }
+    const prefix = `checks:${date}:`;
+    const { blobs } = await store.list({ prefix });
+    await Promise.all(blobs.map((b) => store.delete(b.key)));
+    return new Response(JSON.stringify({ ok: true, deleted: blobs.length }), {
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }
     });
   }
 
