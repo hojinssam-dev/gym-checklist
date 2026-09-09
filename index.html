@@ -86,7 +86,7 @@ function formatDateLine() {
 
 let tasks = [];
 let checks = {};
-const dateKey = todayKST();
+let dateKey = todayKST();
 
 // 방금 내가 직접 체크/해제한 항목은, 서버(Netlify Blobs)에 실제로 반영되기까지
 // 약간의 지연(eventual consistency)이 있을 수 있어서, 그 사이의 자동 새로고침이
@@ -290,6 +290,15 @@ init();
 let pollTimer = null;
 
 async function refreshOnce() {
+  // 자정을 넘겼는지 매번 확인함. 페이지를 새로고침하지 않고 계속 켜둔 채로
+  // 두는 경우(폰을 항상 켜두는 직원 화면 등)에도 날짜가 바뀌면 자동으로
+  // 그날의 새 체크 목록으로 전환되도록 하기 위함.
+  const latestDate = todayKST();
+  if (latestDate !== dateKey) {
+    dateKey = latestDate;
+    Object.keys(pendingChecks).forEach(id => delete pendingChecks[id]);
+    document.getElementById('dateLine').textContent = formatDateLine();
+  }
   await Promise.all([loadTasks(), loadChecks()]);
   render();
 }
