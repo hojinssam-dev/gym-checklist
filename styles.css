@@ -256,6 +256,14 @@ header.top {
   background: var(--brass);
 }
 
+.version-footer {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-top: 36px;
+  padding-bottom: 8px;
+}
+
 .admin-link {
   position: fixed;
   bottom: 18px;
