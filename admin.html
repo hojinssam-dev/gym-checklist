@@ -150,7 +150,7 @@ function renderEditor() {
       <div class="admin-tasks" data-slot="${si}">
         ${slot.tasks.map((t, ti) => `
           <div class="admin-task-row" data-slot="${si}" data-task="${ti}" data-task-id="${t.id}">
-            <span class="drag-handle" title="드래그해서 순서 변경">⠿</span>
+            <span class="drag-handle" title="드래그해서 순서 변경">⇅</span>
             <input type="text" value="${escapeAttr(t.text)}" data-role="task-text" data-slot="${si}" data-task="${ti}" placeholder="업무 내용">
             <button class="icon-btn" data-role="remove-task" data-slot="${si}" data-task="${ti}">✕</button>
           </div>
@@ -198,6 +198,9 @@ function renderEditor() {
 }
 
 // ---- 업무 순서 드래그 정렬 ----
+// 방식: 잡은 항목은 화면에 고정(position:fixed)시켜 손가락을 그대로 따라다니게 하고,
+// 그 항목이 원래 있던 자리에는 "빈 자리(placeholder)"를 남겨서 다른 항목들이 자연스럽게
+// 벌어지고 좁혀지는 것처럼 보이게 함. 다른 항목들의 이동은 FLIP 기법으로 애니메이션 처리함.
 function attachDragHandlers() {
   document.querySelectorAll('.admin-tasks').forEach(container => {
     container.querySelectorAll('.drag-handle').forEach(handle => {
@@ -211,19 +214,54 @@ function startDrag(e, container) {
   const row = e.target.closest('.admin-task-row');
   if (!row) return;
   const pointerId = e.pointerId;
-  row.setPointerCapture(pointerId);
+
+  const startRect = row.getBoundingClientRect();
+  const grabOffsetY = e.clientY - startRect.top; // 항목 안에서 손가락이 잡은 위치(위쪽 끝에서부터)
+
+  // 빈 자리(placeholder)를 원래 위치에 끼워 넣어 레이아웃 공간을 유지함
+  const placeholder = document.createElement('div');
+  placeholder.className = 'admin-task-row drag-placeholder';
+  placeholder.style.height = `${startRect.height}px`;
+  container.insertBefore(placeholder, row);
+
+  // 잡은 항목을 화면 기준 고정 위치로 전환해서 손가락을 따라다니게 함
   row.classList.add('dragging');
+  row.style.position = 'fixed';
+  row.style.left = `${startRect.left}px`;
+  row.style.top = `${startRect.top}px`;
+  row.style.width = `${startRect.width}px`;
+  row.setPointerCapture(pointerId);
+
+  function reflowSiblingsWithAnimation(mutate) {
+    const siblings = [...container.querySelectorAll('.admin-task-row')].filter(r => r !== row);
+    const firstRects = new Map(siblings.map(el => [el, el.getBoundingClientRect()]));
+
+    mutate();
+
+    siblings.forEach(el => {
+      const first = firstRects.get(el);
+      const last = el.getBoundingClientRect();
+      const dy = first.top - last.top;
+      if (dy) {
+        el.style.transition = 'none';
+        el.style.transform = `translateY(${dy}px)`;
+        requestAnimationFrame(() => {
+          el.style.transition = 'transform 0.18s ease';
+          el.style.transform = '';
+        });
+      }
+    });
+  }
 
   function onMove(ev) {
-    const y = ev.clientY;
-    const siblings = [...container.querySelectorAll('.admin-task-row')].filter(r => r !== row);
+    row.style.top = `${ev.clientY - grabOffsetY}px`;
 
-    // 매번 처음부터 다시 계산: 지금 손가락(마우스) 위치가 위에서부터 순서대로
-    // 몇 번째 항목의 중간 지점보다 위에 있는지를 찾아서, 바로 그 자리에 끼워 넣음.
-    // (이전 방식은 "위로 이동"과 "아래로 이동"을 각각 다른 조건으로 나눠서 처리하다
-    //  둘 다 해당 안 되는 빈틈이 생겨 원하는 위치로 안 가는 경우가 있었음)
+    // placeholder를 뺀 나머지(placeholder 포함 X) 항목들 기준으로,
+    // 지금 손가락 위치가 어느 항목의 중간 지점보다 위에 있는지 찾아서 그 자리로 placeholder를 이동
+    const y = ev.clientY;
+    const others = [...container.querySelectorAll('.admin-task-row')].filter(r => r !== row && r !== placeholder);
     let insertBeforeEl = null;
-    for (const sib of siblings) {
+    for (const sib of others) {
       const rect = sib.getBoundingClientRect();
       const mid = rect.top + rect.height / 2;
       if (y < mid) {
@@ -232,20 +270,33 @@ function startDrag(e, container) {
       }
     }
 
-    if (insertBeforeEl) {
-      if (insertBeforeEl !== row.nextSibling) {
-        container.insertBefore(row, insertBeforeEl);
-      }
-    } else if (container.lastElementChild !== row) {
-      container.appendChild(row);
+    const wouldBeNext = insertBeforeEl || null;
+    const isAlreadyThere = wouldBeNext ? placeholder.nextSibling === wouldBeNext : container.lastElementChild === placeholder;
+    if (!isAlreadyThere) {
+      reflowSiblingsWithAnimation(() => {
+        if (wouldBeNext) {
+          container.insertBefore(placeholder, wouldBeNext);
+        } else {
+          container.appendChild(placeholder);
+        }
+      });
     }
   }
 
   function onUp() {
-    row.classList.remove('dragging');
+    row.releasePointerCapture(pointerId);
     row.removeEventListener('pointermove', onMove);
     row.removeEventListener('pointerup', onUp);
-    row.releasePointerCapture(pointerId);
+
+    // 잡았던 항목을 빈 자리 위치로 되돌려 놓고, 임시로 썼던 자리 표시는 제거
+    container.insertBefore(row, placeholder);
+    placeholder.remove();
+    row.classList.remove('dragging');
+    row.style.position = '';
+    row.style.left = '';
+    row.style.top = '';
+    row.style.width = '';
+
     syncTaskOrderFromDOM(container);
     renderEditor();
   }
@@ -256,7 +307,9 @@ function startDrag(e, container) {
 
 function syncTaskOrderFromDOM(container) {
   const slotIndex = +container.dataset.slot;
-  const orderedIds = [...container.querySelectorAll('.admin-task-row')].map(r => r.dataset.taskId);
+  const orderedIds = [...container.querySelectorAll('.admin-task-row')]
+    .filter(el => !el.classList.contains('drag-placeholder'))
+    .map(r => r.dataset.taskId);
   const slot = tasks[slotIndex];
   slot.tasks = orderedIds.map(id => slot.tasks.find(t => t.id === id));
 }

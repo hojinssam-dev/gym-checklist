@@ -491,10 +491,17 @@ header.top {
 .admin-task-row.dragging {
   background: var(--surface-raised);
   border-radius: 8px;
-  box-shadow: 0 4px 14px rgba(0,0,0,0.35);
-  opacity: 0.9;
-  z-index: 5;
-  position: relative;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.45);
+  opacity: 0.97;
+  transform: scale(1.03);
+  z-index: 50;
+  pointer-events: none;
+}
+
+.drag-placeholder {
+  border: 1.5px dashed var(--brass);
+  border-radius: 8px;
+  background: rgba(201,162,39,0.08);
 }
 
 .history-entry {
