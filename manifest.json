@@ -1,6 +1,6 @@
 {
-  "name": "오션짐 업무 체크리스트",
-  "short_name": "오션짐",
+  "name": "업무리스트",
+  "short_name": "업무리스트",
   "start_url": "index.html",
   "display": "standalone",
   "background_color": "#12201a",

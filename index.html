@@ -6,13 +6,15 @@
 <meta name="theme-color" content="#12201a">
 <title>오션짐 업무 체크리스트</title>
 <link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="assets/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="업무리스트">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 <div class="shell">
   <header class="top">
-    <div class="brand">오션짐</div>
+    <div class="brand">OCEAN GYM</div>
   </header>
   <div class="date-line" id="dateLine"></div>
 
@@ -154,7 +156,9 @@ async function loadTasks() {
   try {
     const res = await fetch('/.netlify/functions/tasks');
     const data = await res.json();
-    tasks = data.tasks || [];
+    // 서버에 저장된 순서가 시간순이 아닐 수도 있으므로(예: 관리자가 시간대 복제 후 시간만 바꾼 경우),
+    // "지금 시간대" 계산과 화면 표시 모두를 위해 항상 시간순으로 다시 정렬해서 사용함
+    tasks = (data.tasks || []).slice().sort((a, b) => a.time.localeCompare(b.time));
   } catch (e) {
     tasks = [];
   }
@@ -195,9 +199,9 @@ async function init() {
 
 init();
 
-// 다른 직원의 체크 상황을 반영하기 위한 주기적 새로고침
+// 다른 직원의 체크 상황 + 관리자가 새로 추가/수정한 업무 목록을 함께 반영하기 위한 주기적 새로고침
 setInterval(async () => {
-  await loadChecks();
+  await Promise.all([loadTasks(), loadChecks()]);
   render();
 }, 15000);
 
