@@ -27,19 +27,27 @@ export default async (req) => {
   const store = getStore('gym-checklist');
   const limit = Math.min(Math.max(days || 30, 1), 90);
 
+  // 키 형태: checks:{date}:{taskId}  (예: checks:2026-09-09:ab12cd3)
   const { blobs } = await store.list({ prefix: 'checks:' });
-  const dates = blobs
-    .map((b) => b.key.replace('checks:', ''))
-    .sort()
-    .reverse()
-    .slice(0, limit);
 
   const records = {};
-  for (const date of dates) {
-    records[date] = (await store.get(`checks:${date}`, { type: 'json' })) || {};
+  for (const b of blobs) {
+    const rest = b.key.slice('checks:'.length); // "{date}:{taskId}"
+    const sepIndex = rest.indexOf(':');
+    if (sepIndex === -1) continue;
+    const date = rest.slice(0, sepIndex);
+    const taskId = decodeURIComponent(rest.slice(sepIndex + 1));
+    if (!records[date]) records[date] = {};
+    records[date][taskId] = true;
   }
 
-  return new Response(JSON.stringify({ records }), {
+  const limitedDates = Object.keys(records).sort().reverse().slice(0, limit);
+  const limitedRecords = {};
+  for (const date of limitedDates) {
+    limitedRecords[date] = records[date];
+  }
+
+  return new Response(JSON.stringify({ records: limitedRecords }), {
     headers: { 'Content-Type': 'application/json' }
   });
 };

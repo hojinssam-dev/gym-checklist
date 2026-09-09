@@ -34,6 +34,16 @@
 <button class="now-jump-btn" id="nowJumpBtn" style="display:none">지금 시간대로</button>
 <div class="toast" id="toast"></div>
 
+<div class="confirm-overlay" id="confirmOverlay" style="display:none">
+  <div class="confirm-box">
+    <div class="confirm-text" id="confirmText"></div>
+    <div class="confirm-buttons">
+      <button class="btn ghost" id="confirmNo">아니요</button>
+      <button class="btn" id="confirmYes">네</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const CHECK_ICON = '<svg viewBox="0 0 24 24" fill="none"><path d="M4 12.5L9.5 18L20 6" stroke="#14201a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
@@ -123,10 +133,53 @@ function render() {
   document.getElementById('progressLabel').textContent = total ? `${done} / ${total}개 완료` : '';
 
   document.querySelectorAll('.task-row').forEach(row => {
-    row.addEventListener('click', () => toggleCheck(row.dataset.id));
+    row.addEventListener('click', () => handleTaskClick(row.dataset.id));
   });
 
   updateNowJumpButtonVisibility();
+}
+
+// 체크할 땐 바로 반영하고, 이미 체크된 걸 해제하려는 경우에만 확인창을 거침
+function handleTaskClick(taskId) {
+  if (checks[taskId]) {
+    showUncheckConfirm(taskId);
+  } else {
+    toggleCheck(taskId);
+  }
+}
+
+function findTaskById(taskId) {
+  for (const slot of tasks) {
+    const found = slot.tasks.find(t => t.id === taskId);
+    if (found) return found;
+  }
+  return null;
+}
+
+function showUncheckConfirm(taskId) {
+  const task = findTaskById(taskId);
+  const label = task ? task.text : '이 업무';
+  document.getElementById('confirmText').textContent = `'${label}' 체크를 해제할까요?`;
+
+  const overlay = document.getElementById('confirmOverlay');
+  const yesBtn = document.getElementById('confirmYes');
+  const noBtn = document.getElementById('confirmNo');
+  overlay.style.display = 'flex';
+
+  function cleanup() {
+    overlay.style.display = 'none';
+    yesBtn.removeEventListener('click', onYes);
+    noBtn.removeEventListener('click', onNo);
+  }
+  function onYes() {
+    cleanup();
+    toggleCheck(taskId);
+  }
+  function onNo() {
+    cleanup();
+  }
+  yesBtn.addEventListener('click', onYes);
+  noBtn.addEventListener('click', onNo);
 }
 
 function escapeHtml(str) {
